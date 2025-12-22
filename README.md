@@ -1,4 +1,7 @@
-# 🎯 Sentify 2.0
+<img width="1563" height="432" alt="image" src="https://github.com/user-attachments/assets/a8803c1c-9b07-4cb5-aa45-d3ca8f56f3cb" />
+
+
+# 💹 Sentify 2.0
 
 **AI-Powered Stock Sentiment Analysis Platform**
 
