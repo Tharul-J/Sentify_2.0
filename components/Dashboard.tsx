@@ -5,7 +5,7 @@ import {
   LineChart, Line, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
   Area, AreaChart
 } from 'recharts';
-import { ArrowLeft, RefreshCw, Share2, Filter, ExternalLink, TrendingUp, TrendingDown, Info, Zap, Search, Settings, Award, Activity, Target, BarChart3, GitCompare } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Share2, Filter, ExternalLink, TrendingUp, TrendingDown, Info, Zap, Search, Settings, Award, Activity, Target, BarChart3, GitCompare, Home, AlertCircle, CheckCircle, XCircle, Clock, Shield, Globe, Scale } from 'lucide-react';
 import { fetchCompanyNews } from '../services/marketService';
 import { searchTickers } from '../services/marketService';
 import { analyzeNewsBatch, hasApiKey } from '../services/geminiService';
@@ -17,6 +17,7 @@ interface DashboardProps {
   config: AnalysisConfig;
   onBack: () => void;
   onChangeConfig: () => void;
+  onHome?: () => void;
 }
 
 const COLORS = {
@@ -35,7 +36,7 @@ const TIME_RANGES = [
   { value: '1y', label: '1Y' },
 ];
 
-export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, onChangeConfig }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, onChangeConfig, onHome }) => {
   const [loading, setLoading] = useState(true);
   const [news, setNews] = useState<AnalyzedNewsItem[]>([]);
   const [timeFilter, setTimeFilter] = useState(config.timeRange);
@@ -266,9 +267,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, on
         {/* Top Row: Back button, Stock Info, and Search */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">
-            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
-              <ArrowLeft className="w-6 h-6 text-sentify-muted" />
-            </button>
+            <div className="flex items-center gap-2">
+              {onHome && (
+                <button 
+                  onClick={onHome} 
+                  className="p-2 hover:bg-slate-800 rounded-full transition-colors group"
+                  title="Home"
+                >
+                  <Home className="w-6 h-6 text-sentify-muted group-hover:text-sentify-primary transition-colors" />
+                </button>
+              )}
+              <button 
+                onClick={onBack} 
+                className="p-2 hover:bg-slate-800 rounded-full transition-colors group"
+                title="Back to Stock Selection"
+              >
+                <ArrowLeft className="w-6 h-6 text-sentify-muted group-hover:text-sentify-primary transition-colors" />
+              </button>
+            </div>
             <div>
               <h1 className="text-3xl font-bold flex items-center gap-3">
                 {ticker.symbol} 
@@ -447,6 +463,372 @@ export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, on
         </div>
       </div>
 
+      {/* Investment Recommendation Card */}
+      {(() => {
+        // Calculate investment recommendation based on multiple factors
+        const sentimentScore = ((summary.sentimentDistribution.positive - summary.sentimentDistribution.negative) / summary.totalArticles * 100);
+        const confidence = summary.averageConfidence * 100;
+        const newsVolume = summary.totalArticles;
+        const modelReliability = summary.modelAgreement || confidence;
+        
+        // Calculate momentum (last 30% of articles vs first 30%)
+        const recentCount = Math.floor(news.length * 0.3);
+        const recentNews = news.slice(-recentCount);
+        const oldNews = news.slice(0, recentCount);
+        
+        const recentPositive = recentNews.filter(n => n.sentiment === SentimentType.POSITIVE).length;
+        const oldPositive = oldNews.filter(n => n.sentiment === SentimentType.POSITIVE).length;
+        const momentum = recentCount > 0 ? ((recentPositive / recentCount) - (oldPositive / recentCount)) * 100 : 0;
+        
+        // Determine recommendation
+        let recommendation: 'BUY' | 'HOLD' | 'SELL' = 'HOLD';
+        let recommendationColor = 'text-slate-400';
+        let recommendationBg = 'from-slate-900/30 to-slate-800/30';
+        let recommendationBorder = 'border-slate-700/50';
+        let recommendationIcon = <AlertCircle className="w-12 h-12" />;
+        let confidenceLevel = 'Moderate';
+        let reasoning: string[] = [];
+        
+        // BUY signals
+        if (sentimentScore > 40 && confidence > 70 && modelReliability > 65) {
+          recommendation = 'BUY';
+          recommendationColor = 'text-emerald-400';
+          recommendationBg = 'from-emerald-500/20 via-green-600/20 to-teal-900/40';
+          recommendationBorder = 'border-emerald-500/50 shadow-emerald-500/20';
+          recommendationIcon = <TrendingUp className="w-12 h-12" />;
+          confidenceLevel = 'High';
+          reasoning.push(`Strong positive sentiment (${sentimentScore.toFixed(0)}%)`);
+          reasoning.push(`High AI confidence (${confidence.toFixed(0)}%)`);
+          if (momentum > 10) reasoning.push('Improving sentiment trend');
+          if (newsVolume > 30) reasoning.push('High market attention');
+        }
+        // Strong BUY
+        else if (sentimentScore > 60 && confidence > 80) {
+          recommendation = 'BUY';
+          recommendationColor = 'text-emerald-300';
+          recommendationBg = 'from-emerald-400/30 via-green-500/30 to-teal-800/50';
+          recommendationBorder = 'border-emerald-400/70 shadow-emerald-400/30';
+          recommendationIcon = <CheckCircle className="w-12 h-12" />;
+          confidenceLevel = 'Very High';
+          reasoning.push(`Exceptional sentiment (${sentimentScore.toFixed(0)}%)`);
+          reasoning.push(`Very high confidence (${confidence.toFixed(0)}%)`);
+          reasoning.push('Strong buy signal across all metrics');
+        }
+        // SELL signals
+        else if (sentimentScore < -40 && confidence > 70 && modelReliability > 65) {
+          recommendation = 'SELL';
+          recommendationColor = 'text-red-400';
+          recommendationBg = 'from-red-500/20 via-rose-600/20 to-pink-900/40';
+          recommendationBorder = 'border-red-500/50 shadow-red-500/20';
+          recommendationIcon = <TrendingDown className="w-12 h-12" />;
+          confidenceLevel = 'High';
+          reasoning.push(`Strong negative sentiment (${sentimentScore.toFixed(0)}%)`);
+          reasoning.push(`High AI confidence (${confidence.toFixed(0)}%)`);
+          if (momentum < -10) reasoning.push('Deteriorating sentiment trend');
+          if (newsVolume > 30) reasoning.push('High negative attention');
+        }
+        // Strong SELL
+        else if (sentimentScore < -60 && confidence > 80) {
+          recommendation = 'SELL';
+          recommendationColor = 'text-red-300';
+          recommendationBg = 'from-red-400/30 via-rose-500/30 to-pink-800/50';
+          recommendationBorder = 'border-red-400/70 shadow-red-400/30';
+          recommendationIcon = <XCircle className="w-12 h-12" />;
+          confidenceLevel = 'Very High';
+          reasoning.push(`Severely negative sentiment (${sentimentScore.toFixed(0)}%)`);
+          reasoning.push(`Very high confidence (${confidence.toFixed(0)}%)`);
+          reasoning.push('Strong sell signal - consider immediate action');
+        }
+        // HOLD - moderate positive
+        else if (sentimentScore > 10 && sentimentScore <= 40) {
+          recommendation = 'HOLD';
+          recommendationColor = 'text-blue-400';
+          recommendationBg = 'from-blue-500/20 via-cyan-600/20 to-indigo-900/40';
+          recommendationBorder = 'border-blue-500/50 shadow-blue-500/20';
+          recommendationIcon = <Clock className="w-12 h-12" />;
+          confidenceLevel = 'Moderate';
+          reasoning.push(`Moderately positive sentiment (${sentimentScore.toFixed(0)}%)`);
+          reasoning.push('Wait for stronger signals');
+          if (momentum > 5) reasoning.push('Slight upward trend - monitor closely');
+        }
+        // HOLD - moderate negative
+        else if (sentimentScore < -10 && sentimentScore >= -40) {
+          recommendation = 'HOLD';
+          recommendationColor = 'text-amber-400';
+          recommendationBg = 'from-amber-500/20 via-orange-600/20 to-yellow-900/40';
+          recommendationBorder = 'border-amber-500/50 shadow-amber-500/20';
+          recommendationIcon = <AlertCircle className="w-12 h-12" />;
+          confidenceLevel = 'Moderate';
+          reasoning.push(`Moderately negative sentiment (${sentimentScore.toFixed(0)}%)`);
+          reasoning.push('Caution advised - monitor situation');
+          if (momentum < -5) reasoning.push('Downward trend - consider risk');
+        }
+        // HOLD - neutral/mixed
+        else {
+          recommendation = 'HOLD';
+          recommendationColor = 'text-slate-300';
+          recommendationBg = 'from-slate-600/20 via-slate-700/20 to-slate-900/40';
+          recommendationBorder = 'border-slate-500/50 shadow-slate-500/20';
+          recommendationIcon = <AlertCircle className="w-12 h-12" />;
+          confidenceLevel = 'Low';
+          reasoning.push(`Neutral sentiment (${sentimentScore.toFixed(0)}%)`);
+          reasoning.push('Insufficient signal strength');
+          reasoning.push('Wait for clearer market direction');
+        }
+        
+        // Risk assessment
+        let riskLevel = 'Moderate';
+        let riskColor = 'text-yellow-400';
+        if (confidence < 60 || newsVolume < 10) {
+          riskLevel = 'High';
+          riskColor = 'text-red-400';
+        } else if (confidence > 80 && newsVolume > 30 && modelReliability > 75) {
+          riskLevel = 'Low';
+          riskColor = 'text-emerald-400';
+        }
+
+        // Time Horizon
+        let timeHorizon = 'Medium-term (1-3 months)';
+        if (Math.abs(momentum) > 15 && confidence > 75) {
+          timeHorizon = 'Short-term (Days to weeks)';
+        } else if (Math.abs(sentimentScore) > 50 && newsVolume > 30) {
+          timeHorizon = 'Short to Medium-term (2-8 weeks)';
+        } else if (Math.abs(sentimentScore) < 20) {
+          timeHorizon = 'Long-term (3+ months)';
+        }
+
+        // Position Sizing
+        let positionSize = '5-10% of portfolio';
+        let positionColor = 'text-yellow-300';
+        if (recommendation === 'BUY' && confidence > 80 && riskLevel === 'Low') {
+          positionSize = '10-15% of portfolio';
+          positionColor = 'text-emerald-300';
+        } else if (recommendation === 'SELL' || riskLevel === 'High') {
+          positionSize = '2-5% or reduce existing';
+          positionColor = 'text-red-300';
+        } else if (confidence < 60) {
+          positionSize = '2-5% or wait';
+          positionColor = 'text-amber-300';
+        }
+
+        // Action Steps
+        const actionSteps: string[] = [];
+        if (recommendation === 'BUY') {
+          actionSteps.push('Consider entering position gradually (DCA)');
+          actionSteps.push(`Watch for confirmation with ${ticker.symbol} price action`);
+          actionSteps.push('Set stop-loss at key support levels');
+          if (momentum > 10) actionSteps.push('Monitor momentum - trend is accelerating');
+        } else if (recommendation === 'SELL') {
+          actionSteps.push('Review and reduce exposure if holding');
+          actionSteps.push('Consider taking profits on existing positions');
+          actionSteps.push('Wait for sentiment reversal before re-entry');
+          if (momentum < -10) actionSteps.push('Exit strategy recommended - trend deteriorating');
+        } else {
+          actionSteps.push('Continue monitoring for clearer signals');
+          actionSteps.push('Maintain current position if holding');
+          actionSteps.push('Set alerts for sentiment changes');
+          actionSteps.push('Wait for breakout above key levels');
+        }
+
+        // Key Catalysts to Watch
+        const catalysts: string[] = [];
+        if (newsVolume > 30) catalysts.push('High news volume - major event likely ongoing');
+        if (Math.abs(momentum) > 15) catalysts.push('Rapid sentiment shift - watch for continuation or reversal');
+        if (summary.modelAgreement && summary.modelAgreement < 60) catalysts.push('AI models disagree - wait for consensus');
+        if (confidence < 65) catalysts.push('Low confidence - seek additional confirmation');
+        catalysts.push('Upcoming earnings or major announcements');
+        catalysts.push('Sector trends and market conditions');
+
+        return (
+          <div className={`relative mb-6 bg-gradient-to-br ${recommendationBg} border-2 ${recommendationBorder} rounded-2xl p-6 shadow-2xl overflow-hidden`}>
+            {/* Compact Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${recommendation === 'BUY' ? 'bg-emerald-500/30' : recommendation === 'SELL' ? 'bg-red-500/30' : 'bg-blue-500/30'}`}>
+                  <Target className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white">Investment Recommendation</h2>
+                  <p className="text-xs text-slate-400">AI Analysis for {ticker.symbol}</p>
+                </div>
+              </div>
+              <div className={`text-5xl ${recommendationColor} animate-pulse`}>
+                {recommendation}
+              </div>
+            </div>
+
+            {/* Compact 2-Column Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+              {/* Left Column - Key Metrics */}
+              <div className="space-y-3">
+                {/* Decision Card */}
+                <div className={`bg-gradient-to-r ${
+                  recommendation === 'BUY' ? 'from-emerald-600/30 to-emerald-500/20' : 
+                  recommendation === 'SELL' ? 'from-red-600/30 to-red-500/20' : 
+                  'from-blue-600/30 to-blue-500/20'
+                } border ${
+                  recommendation === 'BUY' ? 'border-emerald-500/40' : 
+                  recommendation === 'SELL' ? 'border-red-500/40' : 
+                  'border-blue-500/40'
+                } rounded-xl p-4`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-slate-400 uppercase font-bold">Decision</span>
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      recommendation === 'BUY' ? 'bg-emerald-500/30 text-emerald-300' : 
+                      recommendation === 'SELL' ? 'bg-red-500/30 text-red-300' : 
+                      'bg-blue-500/30 text-blue-300'
+                    }`}>
+                      {confidenceLevel}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <h3 className={`text-3xl font-black ${recommendationColor}`}>{recommendation}</h3>
+                    <div className="flex gap-1">
+                      <div className={`w-2 h-2 rounded-full ${recommendation === 'BUY' ? 'bg-emerald-400' : recommendation === 'SELL' ? 'bg-red-400' : 'bg-blue-400'} animate-ping`}></div>
+                      <div className={`w-2 h-2 rounded-full ${recommendation === 'BUY' ? 'bg-emerald-400' : recommendation === 'SELL' ? 'bg-red-400' : 'bg-blue-400'}`}></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-purple-600/20 border border-purple-500/30 rounded-xl p-3">
+                    <p className="text-xs text-purple-300 mb-1 font-semibold">Sentiment</p>
+                    <p className={`text-2xl font-black ${sentimentScore > 0 ? 'text-emerald-300' : sentimentScore < 0 ? 'text-red-300' : 'text-slate-300'}`}>
+                      {sentimentScore > 0 ? '+' : ''}{sentimentScore.toFixed(0)}%
+                    </p>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2">
+                      <div className={`h-full rounded-full ${sentimentScore > 0 ? 'bg-emerald-400' : 'bg-red-400'}`} style={{ width: `${Math.min(Math.abs(sentimentScore), 100)}%` }}></div>
+                    </div>
+                  </div>
+
+                  <div className="bg-cyan-600/20 border border-cyan-500/30 rounded-xl p-3">
+                    <p className="text-xs text-cyan-300 mb-1 font-semibold">Confidence</p>
+                    <p className="text-2xl font-black text-cyan-300">{confidence.toFixed(0)}%</p>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2">
+                      <div className="h-full bg-cyan-400 rounded-full" style={{ width: `${confidence}%` }}></div>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-600/20 border border-amber-500/30 rounded-xl p-3">
+                    <p className="text-xs text-amber-300 mb-1 font-semibold">Momentum</p>
+                    <p className={`text-2xl font-black ${momentum > 0 ? 'text-emerald-300' : momentum < 0 ? 'text-red-300' : 'text-slate-300'}`}>
+                      {momentum > 0 ? '▲' : momentum < 0 ? '▼' : '●'} {Math.abs(momentum).toFixed(0)}%
+                    </p>
+                  </div>
+
+                  <div className="bg-orange-600/20 border border-orange-500/30 rounded-xl p-3">
+                    <p className="text-xs text-orange-300 mb-1 font-semibold">Risk Level</p>
+                    <p className={`text-2xl font-black ${riskColor}`}>{riskLevel}</p>
+                  </div>
+                </div>
+
+                {/* Time & Position */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-indigo-600/20 border border-indigo-500/30 rounded-xl p-3">
+                    <p className="text-xs text-indigo-300 mb-1 font-semibold flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Time Horizon
+                    </p>
+                    <p className="text-xs text-indigo-200 font-bold">{timeHorizon}</p>
+                  </div>
+
+                  <div className="bg-pink-600/20 border border-pink-500/30 rounded-xl p-3">
+                    <p className="text-xs text-pink-300 mb-1 font-semibold">Position Size</p>
+                    <p className={`text-xs font-bold ${positionColor}`}>{positionSize}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Actions & Catalysts */}
+              <div className="space-y-3">
+                {/* Action Steps */}
+                <div className="bg-cyan-600/10 border border-cyan-500/30 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle className="w-4 h-4 text-cyan-300" />
+                    <h4 className="text-sm font-black text-white">Action Steps</h4>
+                  </div>
+                  <div className="space-y-2">
+                    {actionSteps.slice(0, 4).map((step, idx) => (
+                      <div key={idx} className="flex gap-2 text-xs text-slate-300 bg-slate-900/30 rounded-lg p-2 border border-slate-700/30">
+                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-[10px] font-bold">{idx + 1}</span>
+                        <span>{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Key Catalysts */}
+                <div className="bg-amber-600/10 border border-amber-500/30 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Zap className="w-4 h-4 text-amber-300" />
+                    <h4 className="text-sm font-black text-white">Key Factors</h4>
+                  </div>
+                  <div className="space-y-2">
+                    {catalysts.slice(0, 4).map((catalyst, idx) => (
+                      <div key={idx} className="flex gap-2 text-xs text-slate-300 bg-slate-900/30 rounded-lg p-2 border border-amber-700/30">
+                        <span className="text-amber-400">⚡</span>
+                        <span>{catalyst}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Risk Breakdown */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-2 text-center">
+                    <p className="text-[10px] text-slate-400 mb-1">Volume</p>
+                    <p className={`text-sm font-black ${
+                      newsVolume > 30 ? 'text-emerald-300' : newsVolume > 15 ? 'text-yellow-300' : 'text-red-300'
+                    }`}>
+                      {newsVolume > 30 ? 'High' : newsVolume > 15 ? 'Mid' : 'Low'}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-2 text-center">
+                    <p className="text-[10px] text-slate-400 mb-1">Agreement</p>
+                    <p className="text-sm font-black text-white">{modelReliability.toFixed(0)}%</p>
+                  </div>
+                  <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-2 text-center">
+                    <p className="text-[10px] text-slate-400 mb-1">Signal</p>
+                    <p className={`text-sm font-black ${
+                      Math.abs(sentimentScore) > 50 ? 'text-emerald-300' : Math.abs(sentimentScore) > 25 ? 'text-yellow-300' : 'text-red-300'
+                    }`}>
+                      {Math.abs(sentimentScore) > 50 ? 'Strong' : Math.abs(sentimentScore) > 25 ? 'Med' : 'Weak'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Analysis Summary - Compact */}
+            <div className="bg-indigo-600/10 border border-indigo-500/30 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-indigo-300" />
+                  <h4 className="text-sm font-black text-white">Analysis Summary</h4>
+                </div>
+                <span className="px-2 py-1 bg-indigo-500/20 border border-indigo-500/30 rounded-full text-[10px] text-indigo-300 font-bold">AI Generated</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                {reasoning.map((reason, idx) => (
+                  <div key={idx} className="flex gap-2 text-xs text-slate-200 bg-slate-900/30 rounded-lg p-2 border border-slate-700/30">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold">{idx + 1}</span>
+                    <span>{reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Disclaimer - Ultra Compact */}
+            <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                <span className="text-amber-300 font-bold">Disclaimer:</span> AI-generated recommendation. Not financial advice. Conduct your own research and consult a financial advisor.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Model Comparison Section - Only shown when both models are active */}
       {config.useGemini && config.useFinBERT && (
         <div className="mb-8 bg-gradient-to-br from-indigo-950/50 to-slate-900 border border-indigo-800/30 rounded-2xl p-8 shadow-2xl">
@@ -613,6 +995,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, on
         
         {/* Left Column: Main Charts */}
         <div className="lg:col-span-1 space-y-6">
+          {/* News Source Distribution Chart */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl hover:border-orange-500/30 transition-all">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <div className="w-8 h-8 bg-orange-500/10 rounded-lg flex items-center justify-center">
+                <Globe className="w-4 h-4 text-orange-400"/>
+              </div>
+              News Source Distribution
+            </h3>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  data={(() => {
+                    const sourceCounts = news.reduce((acc, item) => {
+                      const source = item.source || 'Unknown';
+                      acc[source] = (acc[source] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>);
+                    return Object.entries(sourceCounts)
+                      .map(([name, count]) => ({ name, count }))
+                      .sort((a, b) => b.count - a.count)
+                      .slice(0, 8);
+                  })()}
+                  layout="vertical"
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+                  <XAxis type="number" stroke="#64748b" fontSize={12} />
+                  <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} width={100} />
+                  <Tooltip 
+                    cursor={{fill: '#334155', opacity: 0.2}}
+                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', borderRadius: '8px' }}
+                  />
+                  <Bar dataKey="count" fill="#f97316" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 pt-4 border-t border-slate-800 text-xs text-slate-500 text-center">
+              Top 8 News Sources
+            </div>
+          </div>
+
           {/* Sentiment Distribution Pie Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl hover:border-sentify-primary/30 transition-all">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -793,6 +1215,271 @@ export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, on
           </div>
         </div>
       </div>
+
+      {/* Additional Comparison Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Model Agreement Comparison */}
+        {config.useGemini && config.useFinBERT && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl hover:border-pink-500/30 transition-all">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <div className="w-8 h-8 bg-pink-500/10 rounded-lg flex items-center justify-center">
+                <Scale className="w-4 h-4 text-pink-400"/>
+              </div>
+              Gemini vs FinBERT Agreement
+              <span className="ml-auto text-xs text-slate-500 font-normal">
+                {news.filter(n => n.geminiSentiment === n.finbertSentiment).length}/{news.length} Match
+              </span>
+            </h3>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  data={[
+                    {
+                      category: 'Positive',
+                      Gemini: news.filter(n => n.geminiSentiment === 'positive').length,
+                      FinBERT: news.filter(n => n.finbertSentiment === 'positive').length,
+                    },
+                    {
+                      category: 'Neutral',
+                      Gemini: news.filter(n => n.geminiSentiment === 'neutral').length,
+                      FinBERT: news.filter(n => n.finbertSentiment === 'neutral').length,
+                    },
+                    {
+                      category: 'Negative',
+                      Gemini: news.filter(n => n.geminiSentiment === 'negative').length,
+                      FinBERT: news.filter(n => n.finbertSentiment === 'negative').length,
+                    },
+                  ]}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+                  <XAxis dataKey="category" stroke="#64748b" fontSize={12} />
+                  <YAxis stroke="#64748b" fontSize={12} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', borderRadius: '8px' }}
+                  />
+                  <Legend 
+                    wrapperStyle={{ fontSize: '13px' }}
+                    iconType="circle"
+                  />
+                  <Bar dataKey="Gemini" fill="#a855f7" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="FinBERT" fill="#06b6d4" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-2 gap-4">
+              <div className="text-center">
+                <div className="text-xl font-bold text-emerald-400">
+                  {((news.filter(n => n.geminiSentiment === n.finbertSentiment).length / news.length) * 100).toFixed(1)}%
+                </div>
+                <div className="text-xs text-slate-500 mt-1">Agreement Rate</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-amber-400">
+                  {news.filter(n => n.geminiSentiment !== n.finbertSentiment).length}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">Disagreements</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sentiment vs Confidence Scatter */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl hover:border-indigo-500/30 transition-all">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <div className="w-8 h-8 bg-indigo-500/10 rounded-lg flex items-center justify-center">
+              <Target className="w-4 h-4 text-indigo-400"/>
+            </div>
+            Sentiment vs Confidence Analysis
+            <span className="ml-auto text-xs text-slate-500 font-normal">Quality Check</span>
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={[
+                  {
+                    sentiment: 'Positive',
+                    highConf: news.filter(n => n.sentiment === 'positive' && n.confidenceScore >= 0.7).length,
+                    medConf: news.filter(n => n.sentiment === 'positive' && n.confidenceScore >= 0.4 && n.confidenceScore < 0.7).length,
+                    lowConf: news.filter(n => n.sentiment === 'positive' && n.confidenceScore < 0.4).length,
+                  },
+                  {
+                    sentiment: 'Neutral',
+                    highConf: news.filter(n => n.sentiment === 'neutral' && n.confidenceScore >= 0.7).length,
+                    medConf: news.filter(n => n.sentiment === 'neutral' && n.confidenceScore >= 0.4 && n.confidenceScore < 0.7).length,
+                    lowConf: news.filter(n => n.sentiment === 'neutral' && n.confidenceScore < 0.4).length,
+                  },
+                  {
+                    sentiment: 'Negative',
+                    highConf: news.filter(n => n.sentiment === 'negative' && n.confidenceScore >= 0.7).length,
+                    medConf: news.filter(n => n.sentiment === 'negative' && n.confidenceScore >= 0.4 && n.confidenceScore < 0.7).length,
+                    lowConf: news.filter(n => n.sentiment === 'negative' && n.confidenceScore < 0.4).length,
+                  },
+                ]}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+                <XAxis dataKey="sentiment" stroke="#64748b" fontSize={12} />
+                <YAxis stroke="#64748b" fontSize={12} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', borderRadius: '8px' }}
+                />
+                <Legend 
+                  wrapperStyle={{ fontSize: '13px' }}
+                  iconType="circle"
+                />
+                <Bar dataKey="highConf" stackId="a" fill="#10b981" name="High (70%+)" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="medConf" stackId="a" fill="#f59e0b" name="Medium (40-70%)" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="lowConf" stackId="a" fill="#ef4444" name="Low (<40%)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-800 text-xs text-center">
+            <span className="text-slate-400">
+              High confidence articles: 
+              <span className="text-emerald-400 font-bold ml-1">
+                {news.filter(n => n.confidenceScore >= 0.7).length}
+              </span>
+              {' '}({((news.filter(n => n.confidenceScore >= 0.7).length / news.length) * 100).toFixed(0)}%)
+            </span>
+          </div>
+        </div>
+
+        {/* Article Volume by Hour/Day */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl hover:border-teal-500/30 transition-all">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <div className="w-8 h-8 bg-teal-500/10 rounded-lg flex items-center justify-center">
+              <Clock className="w-4 h-4 text-teal-400"/>
+            </div>
+            News Activity Timeline
+            <span className="ml-auto text-xs text-slate-500 font-normal">Recent Articles</span>
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart 
+                data={(() => {
+                  const hourCounts = news.reduce((acc, item) => {
+                    try {
+                      const date = new Date(item.publishedAt);
+                      const hour = date.getHours();
+                      const label = `${hour}:00`;
+                      acc[label] = (acc[label] || 0) + 1;
+                    } catch {
+                      // Skip invalid dates
+                    }
+                    return acc;
+                  }, {} as Record<string, number>);
+                  return Object.entries(hourCounts)
+                    .map(([time, count]) => ({ time, count }))
+                    .sort((a, b) => {
+                      const aHour = parseInt(a.time.split(':')[0]);
+                      const bHour = parseInt(b.time.split(':')[0]);
+                      return aHour - bHour;
+                    })
+                    .slice(-12); // Last 12 time periods
+                })()}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+                <XAxis dataKey="time" stroke="#64748b" fontSize={11} />
+                <YAxis stroke="#64748b" fontSize={12} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', borderRadius: '8px' }}
+                  labelFormatter={(value) => `Time: ${value}`}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="count" 
+                  stroke="#14b8a6" 
+                  strokeWidth={3}
+                  dot={{ fill: '#14b8a6', r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between items-center text-xs">
+            <span className="text-slate-500">Article Publishing Pattern</span>
+            <span className="text-teal-400 font-bold">
+              Peak: {(() => {
+                const hourCounts = news.reduce((acc, item) => {
+                  try {
+                    const hour = new Date(item.publishedAt).getHours();
+                    acc[hour] = (acc[hour] || 0) + 1;
+                  } catch {}
+                  return acc;
+                }, {} as Record<number, number>);
+                const peak = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0];
+                return peak ? `${peak[0]}:00 (${peak[1]} articles)` : 'N/A';
+              })()}
+            </span>
+          </div>
+        </div>
+
+        {/* Sentiment Momentum Indicator */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl hover:border-yellow-500/30 transition-all">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <div className="w-8 h-8 bg-yellow-500/10 rounded-lg flex items-center justify-center">
+              <Zap className="w-4 h-4 text-yellow-400"/>
+            </div>
+            Sentiment Momentum
+            <span className="ml-auto text-xs text-slate-500 font-normal">Last vs Previous</span>
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart 
+                data={(() => {
+                  const half = Math.floor(news.length / 2);
+                  const recent = news.slice(0, half);
+                  const older = news.slice(half);
+                  
+                  const calcSentiment = (articles: typeof news) => ({
+                    positive: articles.filter(n => n.sentiment === 'positive').length,
+                    neutral: articles.filter(n => n.sentiment === 'neutral').length,
+                    negative: articles.filter(n => n.sentiment === 'negative').length,
+                  });
+                  
+                  const recentStats = calcSentiment(recent);
+                  const olderStats = calcSentiment(older);
+                  
+                  return [
+                    { metric: 'Positive', Recent: recentStats.positive, Previous: olderStats.positive },
+                    { metric: 'Neutral', Recent: recentStats.neutral, Previous: olderStats.neutral },
+                    { metric: 'Negative', Recent: recentStats.negative, Previous: olderStats.negative },
+                  ];
+                })()}
+              >
+                <PolarGrid stroke="#334155" />
+                <PolarAngleAxis dataKey="metric" stroke="#64748b" fontSize={12} />
+                <PolarRadiusAxis stroke="#64748b" fontSize={11} />
+                <Radar name="Recent" dataKey="Recent" stroke="#facc15" fill="#facc15" fillOpacity={0.6} />
+                <Radar name="Previous" dataKey="Previous" stroke="#94a3b8" fill="#94a3b8" fillOpacity={0.3} />
+                <Legend wrapperStyle={{ fontSize: '13px' }} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', borderRadius: '8px' }}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-800 text-center">
+            <div className="text-xs text-slate-400">
+              Sentiment shift from older to recent articles
+            </div>
+            <div className="text-lg font-bold mt-2">
+              {(() => {
+                const half = Math.floor(news.length / 2);
+                const recent = news.slice(0, half);
+                const older = news.slice(half);
+                const recentPositive = recent.filter(n => n.sentiment === 'positive').length / recent.length;
+                const olderPositive = older.filter(n => n.sentiment === 'positive').length / older.length;
+                const diff = ((recentPositive - olderPositive) * 100);
+                return diff > 0 
+                  ? <span className="text-emerald-400">↑ {diff.toFixed(1)}% More Positive</span>
+                  : diff < 0
+                  ? <span className="text-red-400">↓ {Math.abs(diff).toFixed(1)}% Less Positive</span>
+                  : <span className="text-slate-400">→ No Change</span>;
+              })()}
+            </div>
+          </div>
+        </div>
+      </div>
       {/* News Feed Section - Enhanced */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
         <div className="p-6 border-b border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-slate-900 to-slate-800">
@@ -873,6 +1560,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, on
               </div>
 
               <div className="flex flex-wrap items-center gap-3 mb-4">
+                {/* Model Disagreement Warning */}
+                {config.useGemini && config.useFinBERT && item.modelComparison && !item.modelComparison.agreement && (
+                  <div className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/40 rounded-lg flex items-center gap-2 animate-pulse">
+                    <AlertCircle className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs text-amber-300 font-bold uppercase tracking-wider">Models Disagree - Review Carefully</span>
+                  </div>
+                )}
+
                 {/* Sentiment Badge */}
                 <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border shadow-sm ${
                   item.sentiment === SentimentType.POSITIVE ? 'bg-emerald-950/50 text-emerald-400 border-emerald-900 shadow-emerald-900/20' :
@@ -927,7 +1622,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, on
 
               {/* AI Insight Box */}
               <div className="bg-gradient-to-r from-slate-950/80 to-slate-900/50 rounded-xl p-4 border border-slate-800/50 mb-4 backdrop-blur-sm">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 mb-3">
                   <div className="w-8 h-8 bg-sentify-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
                     <Zap className="w-4 h-4 text-sentify-primary" />
                   </div>
@@ -938,6 +1633,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ ticker, config, onBack, on
                     </p>
                   </div>
                 </div>
+
+                {/* Model Comparison Scores - Show when both models active */}
+                {config.useGemini && config.useFinBERT && item.modelComparison && (
+                  <div className="mt-3 pt-3 border-t border-slate-800/50 space-y-2">
+                    <p className="text-xs text-slate-500 font-semibold mb-2">📊 Model Breakdown:</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-2">
+                        <p className="text-xs text-purple-300 font-bold mb-1 flex items-center gap-1">
+                          <Zap className="w-3 h-3" /> Gemini AI
+                        </p>
+                        <p className="text-xs text-slate-400">Sentiment: <span className="font-bold text-white">{item.modelComparison.geminiSentiment}</span></p>
+                        <p className="text-xs text-slate-400">Confidence: <span className="font-bold text-purple-300">{(item.modelComparison.geminiConfidence * 100).toFixed(1)}%</span></p>
+                      </div>
+                      <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-2">
+                        <p className="text-xs text-cyan-300 font-bold mb-1 flex items-center gap-1">
+                          <Target className="w-3 h-3" /> FinBERT
+                        </p>
+                        <p className="text-xs text-slate-400">Sentiment: <span className="font-bold text-white">{item.modelComparison.finbertSentiment}</span></p>
+                        <p className="text-xs text-slate-400">Confidence: <span className="font-bold text-cyan-300">{(item.modelComparison.finbertConfidence * 100).toFixed(1)}%</span></p>
+                      </div>
+                    </div>
+                    {!item.modelComparison.agreement && (
+                      <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-300">Models disagree on this article. Consider the context carefully or check the source.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Show Analyzed Text Preview */}
+                <details className="mt-3 pt-3 border-t border-slate-800/50">
+                  <summary className="text-xs text-slate-500 font-semibold cursor-pointer hover:text-slate-400 transition-colors">🔍 View Analyzed Text (Click to verify)</summary>
+                  <div className="mt-2 bg-slate-950/50 rounded-lg p-3 border border-slate-800">
+                    <p className="text-xs text-slate-400 mb-1 font-bold">Headline (Primary Weight):</p>
+                    <p className="text-xs text-slate-300 mb-3 italic">"{item.title}"</p>
+                    <p className="text-xs text-slate-400 mb-1 font-bold">Context Summary (Supporting):</p>
+                    <p className="text-xs text-slate-300 italic">"{item.summary.substring(0, 200)}..."</p>
+                    <p className="text-xs text-amber-400 mt-2">💡 The headline is given more weight in sentiment classification.</p>
+                  </div>
+                </details>
               </div>
 
               {/* Confidence Bar */}

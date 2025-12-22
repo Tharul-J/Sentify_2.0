@@ -71,6 +71,62 @@ ticker_cache = {}
 news_cache = {}
 CACHE_DURATION = 300  # Cache for 5 minutes for real-time feel
 
+
+def is_relevant_news(article, symbol, company_name=None):
+    """
+    Filter news articles to ensure they are directly relevant to the specific company
+    Returns True if article mentions the company/ticker prominently
+    """
+    title = article.get('title', '').lower()
+    summary = article.get('summary', '').lower()
+    combined_text = f"{title} {summary}"
+    
+    symbol_lower = symbol.lower()
+    
+    # Check if ticker symbol appears in title or summary
+    if symbol_lower in combined_text:
+        return True
+    
+    # If we have company name, check for it
+    if company_name:
+        company_lower = company_name.lower()
+        # Check for full company name or significant parts
+        company_words = company_lower.split()
+        
+        # For short company names (1-2 words), require exact match
+        if len(company_words) <= 2:
+            if company_lower in combined_text:
+                return True
+        else:
+            # For longer names, check if at least 2 key words appear
+            matches = sum(1 for word in company_words if len(word) > 3 and word in combined_text)
+            if matches >= 2:
+                return True
+    
+    # Additional check: if title contains the symbol as a word (not part of another word)
+    import re
+    if re.search(rf'\b{re.escape(symbol_lower)}\b', title):
+        return True
+    
+    return False
+
+
+def get_company_name(symbol):
+    """Get company name for a ticker symbol"""
+    try:
+        ticker = yf.Ticker(symbol)
+        return ticker.info.get('shortName') or ticker.info.get('longName') or symbol
+    except:
+        # Fallback to common names
+        common_names = {
+            'AAPL': 'Apple', 'TSLA': 'Tesla', 'GOOGL': 'Google', 'AMZN': 'Amazon',
+            'MSFT': 'Microsoft', 'NVDA': 'NVIDIA', 'META': 'Meta', 'NFLX': 'Netflix',
+            'AMD': 'AMD', 'INTC': 'Intel', 'WMT': 'Walmart', 'JPM': 'JPMorgan',
+            'V': 'Visa', 'MA': 'Mastercard', 'DIS': 'Disney', 'NKE': 'Nike',
+            'SBUX': 'Starbucks', 'PYPL': 'PayPal', 'UBER': 'Uber', 'SPOT': 'Spotify'
+        }
+        return common_names.get(symbol.upper(), symbol)
+
 # Fallback mock data when Yahoo Finance is rate limited
 FALLBACK_DATA = {
     'AAPL': {'symbol': 'AAPL', 'name': 'Apple Inc.', 'price': 195.71, 'change': 2.15},
@@ -313,58 +369,143 @@ def get_ticker_info(symbol):
     return None
 
 
+def get_finnhub_quote(symbol, api_key):
+    """Get real-time quote from Finnhub"""
+    try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={api_key}"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            current_price = data.get('c', 0)  # Current price
+            previous_close = data.get('pc', 0)  # Previous close
+            if current_price > 0:
+                change = current_price - previous_close
+                return {
+                    'price': round(current_price, 2),
+                    'change': round(change, 2)
+                }
+        return None
+    except Exception as e:
+        return None
+
+
 def search_yfinance_tickers(query):
     """
-    Search for tickers matching the query
-    Note: yfinance doesn't have a built-in search API, so we use a mapping approach
+    Search for tickers matching the query using Finnhub Symbol Search API
+    Supports worldwide company search across all exchanges
+    Gets price data directly from Finnhub to avoid Yahoo Finance rate limits
     """
     results = []
-    query_upper = query.upper()
+    query_upper = query.upper().strip()
     
-    # Common ticker mappings to avoid excessive API calls
-    ticker_mapping = {
-        'APPLE': 'AAPL', 'AAPL': 'AAPL',
-        'TESLA': 'TSLA', 'TSLA': 'TSLA',
-        'GOOGLE': 'GOOGL', 'GOOGL': 'GOOGL', 'GOOG': 'GOOG',
-        'AMAZON': 'AMZN', 'AMZN': 'AMZN',
-        'MICROSOFT': 'MSFT', 'MSFT': 'MSFT',
-        'NVIDIA': 'NVDA', 'NVDA': 'NVDA',
-        'META': 'META', 'FACEBOOK': 'META',
-        'NETFLIX': 'NFLX', 'NFLX': 'NFLX',
-        'AMD': 'AMD', 'INTEL': 'INTC', 'INTC': 'INTC',
-        'BITCOIN': 'BTC-USD', 'BTC': 'BTC-USD',
-        'ETHEREUM': 'ETH-USD', 'ETH': 'ETH-USD',
-        'COINBASE': 'COIN', 'COIN': 'COIN',
-        'WALMART': 'WMT', 'WMT': 'WMT',
-        'JPMORGAN': 'JPM', 'JPM': 'JPM',
-        'VISA': 'V', 'MASTERCARD': 'MA', 'MA': 'MA',
-        'DISNEY': 'DIS', 'DIS': 'DIS',
-        'NIKE': 'NKE', 'NKE': 'NKE',
-        'STARBUCKS': 'SBUX', 'SBUX': 'SBUX',
-        'PAYPAL': 'PYPL', 'PYPL': 'PYPL',
-        'UBER': 'UBER', 'LYFT': 'LYFT',
-        'SPOTIFY': 'SPOT', 'SPOT': 'SPOT',
+    if not query_upper:
+        return results
+    
+    # Try Finnhub symbol search first (supports worldwide search)
+    if FINNHUB_API_KEY:
+        try:
+            # Finnhub symbol search endpoint
+            url = f"https://finnhub.io/api/v1/search?q={query_upper}&token={FINNHUB_API_KEY}"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                symbols = data.get('result', [])
+                
+                # Process up to 10 results to find 5 valid ones
+                for item in symbols[:10]:
+                    symbol = item.get('symbol', '')
+                    description = item.get('description', '')
+                    ticker_type = item.get('type', '')
+                    display_symbol = item.get('displaySymbol', symbol)
+                    
+                    # Skip invalid or non-stock entries
+                    if not symbol or ticker_type in ['warrant', 'right', 'index']:
+                        continue
+                    
+                    # Get price data directly from Finnhub (faster, no Yahoo rate limits)
+                    quote_data = get_finnhub_quote(symbol, FINNHUB_API_KEY)
+                    
+                    if quote_data and quote_data['price'] > 0:
+                        ticker_data = {
+                            'symbol': symbol,
+                            'name': description or symbol,
+                            'price': quote_data['price'],
+                            'change': quote_data['change']
+                        }
+                        results.append(ticker_data)
+                        
+                    # Limit to 5 valid results
+                    if len(results) >= 5:
+                        break
+                
+                if results:
+                    print(f"[OK] Finnhub search: {len(results)} results for '{query}'")
+                    return results
+            elif response.status_code == 429:
+                print("[WARNING] Finnhub API rate limit reached, trying fallback key...")
+                # Try second Finnhub key
+                if FINNHUB_API_KEY_2:
+                    url = f"https://finnhub.io/api/v1/search?q={query_upper}&token={FINNHUB_API_KEY_2}"
+                    response = requests.get(url, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        symbols = data.get('result', [])
+                        for item in symbols[:10]:
+                            symbol = item.get('symbol', '')
+                            description = item.get('description', '')
+                            ticker_type = item.get('type', '')
+                            if not symbol or ticker_type in ['warrant', 'right', 'index']:
+                                continue
+                            quote_data = get_finnhub_quote(symbol, FINNHUB_API_KEY_2)
+                            if quote_data and quote_data['price'] > 0:
+                                ticker_data = {
+                                    'symbol': symbol,
+                                    'name': description or symbol,
+                                    'price': quote_data['price'],
+                                    'change': quote_data['change']
+                                }
+                                results.append(ticker_data)
+                            if len(results) >= 5:
+                                break
+                        if results:
+                            print(f"[OK] Finnhub key 2: {len(results)} results for '{query}'")
+                            return results
+        except Exception as e:
+            print(f"[WARNING] Finnhub search failed: {str(e)}")
+    
+    # Fallback: Try direct ticker lookup with cached yfinance
+    if len(query_upper) <= 5:  # Ticker symbols are usually 1-5 characters
+        try:
+            ticker_data = get_ticker_info(query_upper)
+            if ticker_data and ticker_data['price'] > 0:
+                results.append(ticker_data)
+                print(f"[OK] Direct ticker lookup successful: {query_upper}")
+                return results
+        except Exception as e:
+            print(f"[WARNING] Direct ticker lookup failed for {query_upper}: {str(e)}")
+    
+    # Fallback: Common ticker mappings for popular searches
+    popular_mapping = {
+        'APPLE': 'AAPL', 'TESLA': 'TSLA', 'GOOGLE': 'GOOGL',
+        'AMAZON': 'AMZN', 'MICROSOFT': 'MSFT', 'NVIDIA': 'NVDA',
+        'META': 'META', 'FACEBOOK': 'META', 'NETFLIX': 'NFLX',
+        'AMD': 'AMD', 'INTEL': 'INTC', 'WALMART': 'WMT',
+        'JPMORGAN': 'JPM', 'VISA': 'V', 'MASTERCARD': 'MA',
+        'DISNEY': 'DIS', 'NIKE': 'NKE', 'STARBUCKS': 'SBUX',
+        'PAYPAL': 'PYPL', 'UBER': 'UBER', 'SPOTIFY': 'SPOT',
     }
     
-    # Find matching symbols
-    matched_symbols = set()
-    
-    # Exact match
-    if query_upper in ticker_mapping:
-        matched_symbols.add(ticker_mapping[query_upper])
-    
-    # Partial match
-    for name, symbol in ticker_mapping.items():
+    for name, symbol in popular_mapping.items():
         if query_upper in name or name.startswith(query_upper):
-            matched_symbols.add(symbol)
-            if len(matched_symbols) >= 5:  # Limit to 5 results
+            ticker_data = get_ticker_info(symbol)
+            if ticker_data and ticker_data['price'] > 0:
+                results.append(ticker_data)
+            if len(results) >= 5:
                 break
     
-    # Fetch data for matched symbols
-    for symbol in matched_symbols:
-        ticker_data = get_ticker_info(symbol)
-        if ticker_data and ticker_data['price'] > 0:
-            results.append(ticker_data)
+    if results:
+        print(f"[OK] Fallback mapping: {len(results)} results for '{query}'")
     
     return results
 
@@ -424,11 +565,14 @@ def analyze_sentiment_finbert(text):
 
 
 def fetch_alphavantage_news(symbol, time_filter):
-    """Fetch news from Alpha Vantage News Sentiment API"""
+    """Fetch news from Alpha Vantage News Sentiment API with relevance filtering"""
     if not ALPHA_VANTAGE_KEY:
         return None
     
     try:
+        # Get company name for better filtering
+        company_name = get_company_name(symbol)
+        
         url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&apikey={ALPHA_VANTAGE_KEY}&limit=50"
         response = requests.get(url, timeout=10)
         data = response.json()
@@ -436,24 +580,32 @@ def fetch_alphavantage_news(symbol, time_filter):
         if 'feed' in data and data['feed']:
             news_items = []
             for idx, article in enumerate(data['feed'][:50]):
-                news_items.append({
+                article_data = {
                     'id': f"{symbol}_av_{idx}",
                     'title': article.get('title', ''),
                     'source': article.get('source', 'Alpha Vantage'),
                     'publishedAt': article.get('time_published', ''),
                     'url': article.get('url', ''),
                     'summary': article.get('summary', '')[:500]
-                })
-            print(f"[OK] Alpha Vantage News: {len(news_items)} articles for {symbol}")
-            return news_items
+                }
+                
+                # Only include if relevant to the company
+                if is_relevant_news(article_data, symbol, company_name):
+                    news_items.append(article_data)
+                    
+            print(f"[OK] Alpha Vantage News: {len(news_items)} relevant articles for {symbol} (filtered from {len(data['feed'])})")
+            return news_items if news_items else None
     except Exception as e:
         print(f"Alpha Vantage News error: {e}")
     return None
 
 
 def fetch_finnhub_news(symbol, time_filter):
-    """Fetch news from Finnhub API with fallback to second key"""
+    """Fetch news from Finnhub API with fallback to second key and relevance filtering"""
     keys = [FINNHUB_API_KEY, FINNHUB_API_KEY_2]
+    
+    # Get company name for better filtering
+    company_name = get_company_name(symbol)
     
     for idx, key in enumerate(keys):
         if not key:
@@ -475,17 +627,23 @@ def fetch_finnhub_news(symbol, time_filter):
             
             if isinstance(data, list) and data:
                 news_items = []
+                total_fetched = len(data[:50])
                 for article_idx, article in enumerate(data[:50]):
-                    news_items.append({
+                    article_data = {
                         'id': f"{symbol}_fh_{article_idx}",
                         'title': article.get('headline', ''),
                         'source': article.get('source', 'Finnhub'),
                         'publishedAt': datetime.fromtimestamp(article.get('datetime', 0)).isoformat(),
                         'url': article.get('url', ''),
                         'summary': article.get('summary', '')[:500]
-                    })
-                print(f"[OK] Finnhub key {idx + 1}: {len(news_items)} articles for {symbol}")
-                return news_items
+                    }
+                    
+                    # Only include if relevant to the company
+                    if is_relevant_news(article_data, symbol, company_name):
+                        news_items.append(article_data)
+                        
+                print(f"[OK] Finnhub key {idx + 1}: {len(news_items)} relevant articles for {symbol} (filtered from {total_fetched})")
+                return news_items if news_items else None
         except Exception as e:
             print(f"Finnhub key {idx + 1} error: {e}")
             continue
@@ -494,7 +652,7 @@ def fetch_finnhub_news(symbol, time_filter):
 
 
 def fetch_newsapi_news(symbol, time_filter):
-    """Fetch news from NewsAPI"""
+    """Fetch news from NewsAPI with relevance filtering"""
     if not newsapi:
         return None
     
@@ -503,11 +661,7 @@ def fetch_newsapi_news(symbol, time_filter):
         from_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
         
         # Get company name
-        try:
-            ticker = yf.Ticker(symbol)
-            company_name = ticker.info.get('shortName', symbol)
-        except:
-            company_name = symbol
+        company_name = get_company_name(symbol)
         
         articles = newsapi.get_everything(
             q=f"{symbol} OR {company_name}",
@@ -518,18 +672,23 @@ def fetch_newsapi_news(symbol, time_filter):
         )
         
         news_items = []
+        total_fetched = len(articles.get('articles', []))
         for idx, article in enumerate(articles.get('articles', [])):
-            news_items.append({
+            article_data = {
                 'id': f"{symbol}_na_{idx}",
                 'title': article['title'],
                 'source': article['source']['name'],
                 'publishedAt': article['publishedAt'],
                 'url': article['url'],
                 'summary': article.get('description', article['title'])[:500]
-            })
+            }
+            
+            # Only include if relevant to the company
+            if is_relevant_news(article_data, symbol, company_name):
+                news_items.append(article_data)
         
         if news_items:
-            print(f"[OK] NewsAPI: {len(news_items)} articles for {symbol}")
+            print(f"[OK] NewsAPI: {len(news_items)} relevant articles for {symbol} (filtered from {total_fetched})")
             return news_items
     except Exception as e:
         print(f"NewsAPI error: {e}")
@@ -565,28 +724,37 @@ def fetch_polygon_news(symbol, time_filter):
 
 
 def fetch_newsdata_news(symbol, time_filter):
-    """Fetch news from NewsData.io API"""
+    """Fetch news from NewsData.io API with relevance filtering"""
     if not NEWSDATA_API_KEY:
         return None
     
     try:
+        # Get company name for better filtering
+        company_name = get_company_name(symbol)
+        
         url = f"https://newsdata.io/api/1/news?apikey={NEWSDATA_API_KEY}&q={symbol}&language=en"
         response = requests.get(url, timeout=10)
         data = response.json()
         
         if 'results' in data and data['results']:
             news_items = []
+            total_fetched = len(data['results'][:50])
             for idx, article in enumerate(data['results'][:50]):
-                news_items.append({
+                article_data = {
                     'id': f"{symbol}_nd_{idx}",
                     'title': article.get('title', ''),
                     'source': article.get('source_id', 'NewsData'),
                     'publishedAt': article.get('pubDate', ''),
                     'url': article.get('link', ''),
                     'summary': article.get('description', '')[:500]
-                })
-            print(f"[OK] NewsData: {len(news_items)} articles for {symbol}")
-            return news_items
+                }
+                
+                # Only include if relevant to the company
+                if is_relevant_news(article_data, symbol, company_name):
+                    news_items.append(article_data)
+                    
+            print(f"[OK] NewsData: {len(news_items)} relevant articles for {symbol} (filtered from {total_fetched})")
+            return news_items if news_items else None
     except Exception as e:
         print(f"NewsData error: {e}")
     return None

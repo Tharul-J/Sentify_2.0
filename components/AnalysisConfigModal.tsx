@@ -40,7 +40,7 @@ export const AnalysisConfigModal: React.FC<AnalysisConfigModalProps> = ({ ticker
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 pt-20">
       <div className="bg-slate-900 rounded-2xl border border-slate-700 max-w-2xl w-full shadow-2xl animate-fade-in-up">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-800">

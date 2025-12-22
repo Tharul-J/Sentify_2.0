@@ -36,7 +36,8 @@ export const analyzeNewsBatch = async (
   let finbertResults: any[] = [];
   if (useFinBERT) {
     try {
-      const texts = news.map(item => `${item.title}. ${item.summary}`);
+      // Give more weight to headline by mentioning it twice to emphasize primary sentiment
+      const texts = news.map(item => `HEADLINE: ${item.title}. HEADLINE AGAIN: ${item.title}. Additional context: ${item.summary.substring(0, 200)}`);
       finbertResults = await analyzeWithFinBERT(texts);
       console.log(`✓ FinBERT analyzed ${finbertResults.length} articles`);
     } catch (error) {
@@ -53,14 +54,20 @@ export const analyzeNewsBatch = async (
     if (useGemini && ai) {
       try {
         const prompt = `
-          Role: Financial Analyst.
-          Task: Analyze the sentiment of the following news headline regarding the stock market or specific company.
+          Role: Financial Analyst with expertise in news sentiment analysis.
+          Task: Analyze the sentiment of this financial news. Focus PRIMARILY on the headline as it contains the main message.
           
-          Headline: "${item.title}"
-          Context/Summary: "${item.summary}"
+          MAIN HEADLINE: "${item.title}"
+          Supporting Context: "${item.summary.substring(0, 300)}"
+          
+          Important Guidelines:
+          - The headline sentiment takes priority over any hypothetical scenarios in the context
+          - Words like "pleased", "stellar", "gain", "surge" indicate POSITIVE sentiment
+          - Words like "plunge", "loss", "crash", "disappointing" indicate NEGATIVE sentiment
+          - Don't be misled by hypothetical "what-if" scenarios mentioned in the context
           
           Output Requirements:
-          1. Sentiment: strictly "Positive", "Negative", or "Neutral".
+          1. Sentiment: strictly "Positive", "Negative", or "Neutral" based on the headline's primary message.
           2. Confidence Score: 0.0 to 1.0 based on how explicit the sentiment is.
           3. Explanation: A concise, professional 1-sentence rationale for the investor.
         `;

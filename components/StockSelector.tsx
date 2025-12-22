@@ -26,7 +26,7 @@ export const StockSelector: React.FC<StockSelectorProps> = ({ onSelect }) => {
   };
 
   return (
-    <div className="min-h-screen bg-sentify-dark flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-sentify-dark flex flex-col items-center justify-center p-4 pt-20">
       <div className="w-full max-w-md animate-fade-in-up">
         <h2 className="text-3xl font-bold text-white mb-2 text-center">Analyze a Company</h2>
         <p className="text-slate-400 text-center mb-8">Search for a ticker symbol to begin sentiment analysis.</p>
