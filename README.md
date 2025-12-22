@@ -191,15 +191,10 @@ MIT License - feel free to use this project!
 
 ---
 
-## 👨‍💻 Credits
-
-**Developed by:** [@Tharul-J](https://github.com/Tharul-J)
-
----
 
 <div align="center">
 
-**Built with ❤️ using React, TypeScript, Flask, and AI**
+**By - Tharul-J**
 
 ⭐ Star this repo if you find it helpful!
 
