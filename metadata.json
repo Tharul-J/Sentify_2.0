@@ -1,0 +1,5 @@
+{
+  "name": "Sentify",
+  "description": "Financial Sentiment Analysis System using Gemini and React. Real-time news analysis for smarter investment decisions.",
+  "requestFramePermissions": []
+}
