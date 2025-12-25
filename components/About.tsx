@@ -164,8 +164,8 @@ export const About: React.FC = () => {
 
         {/* Footer */}
         <div className="text-center pt-8 border-t border-slate-700/50">
-          <p className="text-slate-400 mb-2">Developed by <span className="text-sentify-primary font-semibold">@Tharul-J</span></p>
-          <p className="text-sm text-slate-500">Group 7 - Financial Sentiment Analysis System</p>
+          <p className="text-slate-400 mb-2">Developed by <a href="https://github.com/Tharul-J/Sentify_2.0" target="_blank" rel="noopener noreferrer" className="text-sentify-primary font-semibold hover:underline transition-all">@Tharul-J</a></p>
+          <p className="text-sm text-slate-500">Sentify - Financial Sentiment Analysis System</p>
         </div>
 
       </div>
