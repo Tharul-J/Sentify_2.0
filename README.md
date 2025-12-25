@@ -59,20 +59,6 @@ cd ..
 
 ### 2. Configure API Keys
 
-**Create `.env.local` in root:**
-```env
-VITE_GEMINI_API_KEY=your_gemini_key
-VITE_API_BASE_URL=http://localhost:5000
-```
-
-**Create `backend/.env`:**
-```env
-NEWS_API_KEY=your_newsapi_key
-ALPHA_VANTAGE_KEY=your_alphavantage_key
-FINNHUB_API_KEY=your_finnhub_key
-FINNHUB_API_KEY_2=your_second_finnhub_key
-NEWSDATA_API_KEY=your_newsdata_key
-```
 
 **Get API Keys:**
 - Gemini: https://aistudio.google.com/app/apikey
@@ -140,28 +126,6 @@ Filter news by:
 
 ---
 
-## 🐛 Troubleshooting
-
-**Port in use:**
-```bash
-netstat -ano | findstr :3000
-taskkill /PID <PID> /F
-```
-
-**FinBERT not loading:**
-```bash
-pip install --upgrade transformers torch
-```
-
-**No news articles:**
-- Check API keys in `backend/.env`
-- Verify at least one news API key is valid
-
-**CORS errors:**
-- Ensure backend runs on port 5000
-- Check `VITE_API_BASE_URL` in `.env.local`
-
----
 
 ## 📁 Project Structure
 
