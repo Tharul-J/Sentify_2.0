@@ -22,4 +22,4 @@ Write-Host "Backend:  http://localhost:5000" -ForegroundColor Yellow
 Write-Host "Frontend: http://localhost:3000" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Press any key to close this window..." -ForegroundColor Gray
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')

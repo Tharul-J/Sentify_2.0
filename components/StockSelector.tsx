@@ -12,10 +12,8 @@ export const StockSelector: React.FC<StockSelectorProps> = ({ onSelect }) => {
   const [results, setResults] = useState<StockTicker[]>([]);
   const [searching, setSearching] = useState(false);
 
-  const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setQuery(val);
-    if (val.length >= 1) {  // Changed from > 1 to >= 1 to search immediately
+  const performSearch = async (val: string) => {
+    if (val.length >= 1) {
       setSearching(true);
       const data = await searchTickers(val);
       setResults(data);
@@ -23,6 +21,17 @@ export const StockSelector: React.FC<StockSelectorProps> = ({ onSelect }) => {
     } else {
       setResults([]);
     }
+  };
+
+  const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setQuery(val);
+    performSearch(val);
+  };
+
+  const handlePopularClick = (symbol: string) => {
+    setQuery(symbol);
+    performSearch(symbol);
   };
 
   return (
@@ -77,15 +86,11 @@ export const StockSelector: React.FC<StockSelectorProps> = ({ onSelect }) => {
         {results.length === 0 && (
            <div className="mt-8">
              <p className="text-xs text-slate-500 uppercase tracking-wider mb-4 font-semibold text-center">Popular Tickers</p>
-             <div className="flex flex-wrap gap-2 justify-center">
-               {['AAPL', 'TSLA', 'NVDA', 'MSFT', 'AMZN'].map(sym => (
+             <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
+               {['NVDA', 'TSLA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN', 'AMD', 'NFLX', 'SONY', 'SSNLF', 'TM', 'DELL', 'HSBC', 'NSRGY', 'BYDDY', 'BMWYY'].map(sym => (
                  <button 
                   key={sym} 
-                  onClick={async () => {
-                     // Quick hack to simulate selection from popular list
-                     const res = await searchTickers(sym);
-                     if(res[0]) onSelect(res[0]);
-                  }}
+                  onClick={() => handlePopularClick(sym)}
                   className="px-4 py-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 transition-all hover:border-sentify-primary"
                  >
                    {sym}

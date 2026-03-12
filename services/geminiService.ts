@@ -2,16 +2,54 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { NewsItem, AnalyzedNewsItem, SentimentType, ModelSentimentResult, DualModelAnalysis } from "../types";
 import { analyzeWithFinBERT } from "./finbertService";
 
+// Gemini API key rotation system
+const GEMINI_API_KEYS = [
+  import.meta.env.VITE_GEMINI_API_KEY,
+  import.meta.env.VITE_GEMINI_API_KEY_2,
+  import.meta.env.VITE_GEMINI_API_KEY_3,
+  import.meta.env.VITE_GEMINI_API_KEY_4,
+  import.meta.env.VITE_GEMINI_API_KEY_5,
+  import.meta.env.VITE_GEMINI_API_KEY_6,
+].filter(Boolean) as string[];
+
+let currentKeyIndex = 0;
+const exhaustedKeys = new Set<number>();
+
 // Helper to check if we are in a live environment or simulation
 export const hasApiKey = (): boolean => {
-  return !!import.meta.env.VITE_GEMINI_API_KEY;
+  return GEMINI_API_KEYS.length > 0;
 };
 
-const getAIClient = () => {
-  if (!import.meta.env.VITE_GEMINI_API_KEY) {
+const getNextValidKeyIndex = (): number | null => {
+  for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
+    const idx = (currentKeyIndex + i) % GEMINI_API_KEYS.length;
+    if (!exhaustedKeys.has(idx)) {
+      return idx;
+    }
+  }
+  return null;
+};
+
+const getAIClient = (): GoogleGenAI | null => {
+  const keyIndex = getNextValidKeyIndex();
+  if (keyIndex === null) {
+    console.log("All Gemini API keys exhausted");
     return null;
   }
-  return new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  currentKeyIndex = keyIndex;
+  return new GoogleGenAI({ apiKey: GEMINI_API_KEYS[keyIndex] });
+};
+
+const markKeyExhausted = () => {
+  exhaustedKeys.add(currentKeyIndex);
+  console.log(`Gemini key ${currentKeyIndex + 1} exhausted, trying next...`);
+  currentKeyIndex = (currentKeyIndex + 1) % GEMINI_API_KEYS.length;
+};
+
+// Reset exhausted keys (call this periodically or on new session)
+export const resetGeminiKeys = () => {
+  exhaustedKeys.clear();
+  currentKeyIndex = 0;
 };
 
 /**
@@ -22,10 +60,8 @@ export const analyzeNewsBatch = async (
   useGemini: boolean = true, 
   useFinBERT: boolean = false
 ): Promise<AnalyzedNewsItem[]> => {
-  const ai = getAIClient();
-  
   // Fallback for UI dev without a real key
-  if (!ai && !useFinBERT) {
+  if (!hasApiKey() && !useFinBERT) {
     console.log("No API Key found. Running in Simulation Mode.");
     return simulateAnalysis(news);
   }
@@ -50,51 +86,70 @@ export const analyzeNewsBatch = async (
     let geminiResult: ModelSentimentResult | undefined;
     let finbertResult: ModelSentimentResult | undefined;
 
-    // Analyze with Gemini
-    if (useGemini && ai) {
-      try {
-        const prompt = `
-          Role: Financial Analyst with expertise in news sentiment analysis.
-          Task: Analyze the sentiment of this financial news. Focus PRIMARILY on the headline as it contains the main message.
-          
-          MAIN HEADLINE: "${item.title}"
-          Supporting Context: "${item.summary.substring(0, 300)}"
-          
-          Important Guidelines:
-          - The headline sentiment takes priority over any hypothetical scenarios in the context
-          - Words like "pleased", "stellar", "gain", "surge" indicate POSITIVE sentiment
-          - Words like "plunge", "loss", "crash", "disappointing" indicate NEGATIVE sentiment
-          - Don't be misled by hypothetical "what-if" scenarios mentioned in the context
-          
-          Output Requirements:
-          1. Sentiment: strictly "Positive", "Negative", or "Neutral" based on the headline's primary message.
-          2. Confidence Score: 0.0 to 1.0 based on how explicit the sentiment is.
-          3. Explanation: A concise, professional 1-sentence rationale for the investor.
-        `;
+    // Analyze with Gemini (with key rotation on quota errors)
+    if (useGemini) {
+      let retries = GEMINI_API_KEYS.length;
+      while (retries > 0) {
+        const currentAi = getAIClient();
+        if (!currentAi) break;
+        
+        try {
+          const prompt = `
+            Role: Financial Analyst with expertise in news sentiment analysis.
+            Task: Analyze the sentiment of this financial news. Focus PRIMARILY on the headline as it contains the main message.
+            
+            MAIN HEADLINE: "${item.title}"
+            Supporting Context: "${item.summary.substring(0, 300)}"
+            
+            Important Guidelines:
+            - The headline sentiment takes priority over any hypothetical scenarios in the context
+            - Words like "pleased", "stellar", "gain", "surge" indicate POSITIVE sentiment
+            - Words like "plunge", "loss", "crash", "disappointing" indicate NEGATIVE sentiment
+            - Don't be misled by hypothetical "what-if" scenarios mentioned in the context
+            
+            Output Requirements:
+            1. Sentiment: strictly "Positive", "Negative", or "Neutral" based on the headline's primary message.
+            2. Confidence Score: 0.0 to 1.0 based on how explicit the sentiment is.
+            3. Explanation: A concise, professional 1-sentence rationale for the investor.
+          `;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                sentiment: { type: Type.STRING, enum: ["Positive", "Negative", "Neutral"] },
-                confidenceScore: { type: Type.NUMBER },
-                explanation: { type: Type.STRING }
+          const response = await currentAi.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  sentiment: { type: Type.STRING, enum: ["Positive", "Negative", "Neutral"] },
+                  confidenceScore: { type: Type.NUMBER },
+                  explanation: { type: Type.STRING }
+                }
               }
             }
-          }
-        });
+          });
 
-        const json = JSON.parse(response.text || "{}");
-        geminiResult = {
-          sentiment: json.sentiment as SentimentType,
-          confidence: json.confidenceScore || 0.5,
-        };
-      } catch (error) {
-        console.error("Gemini analysis failed for item:", item.id, error);
+          const json = JSON.parse(response.text || "{}");
+          geminiResult = {
+            sentiment: json.sentiment as SentimentType,
+            confidence: json.confidenceScore || 0.5,
+          };
+          break; // Success - exit retry loop
+        } catch (error: any) {
+          const isQuotaError = error?.status === 429 || 
+            error?.message?.includes('quota') || 
+            error?.message?.includes('rate') ||
+            error?.message?.includes('Resource has been exhausted');
+          
+          if (isQuotaError) {
+            markKeyExhausted();
+            retries--;
+            console.log(`Quota error on key, ${retries} keys remaining to try`);
+          } else {
+            console.error("Gemini analysis failed for item:", item.id, error);
+            break; // Non-quota error, don't retry
+          }
+        }
       }
     }
 
@@ -137,21 +192,14 @@ export const analyzeNewsBatch = async (
     const finalSentiment = modelComparison?.finalSentiment || geminiResult?.sentiment || finbertResult?.sentiment || SentimentType.NEUTRAL;
     const finalConfidence = modelComparison?.finalConfidence || geminiResult?.confidence || finbertResult?.confidence || 0.5;
     
-    // Generate explanation
+    // Generate explanation based on which models are configured
     let explanation = "";
-    if (modelComparison) {
-      if (modelComparison.agreement) {
-        explanation = `Both models agree: ${finalSentiment} sentiment detected with high confidence.`;
-      } else {
-        explanation = `Models disagree: Gemini detected ${geminiResult?.sentiment}, FinBERT detected ${finbertResult?.sentiment}. Using higher confidence prediction.`;
-      }
-    } else if (geminiResult) {
-      explanation = "Analyzed by Gemini AI for financial sentiment.";
-    } else if (finbertResult) {
-      explanation = "Analyzed by FinBERT specialized financial model.";
-    } else {
-      explanation = "Analysis unavailable.";
-    }
+    const modelNames = [];
+    if (useFinBERT) modelNames.push("FinBERT");
+    if (useGemini) modelNames.push("Gemini");
+    const modelLabel = modelNames.join(" and ");
+    
+    explanation = `Analyzed by ${modelLabel}: ${finalSentiment} sentiment with ${(finalConfidence * 100).toFixed(0)}% confidence.`;
 
     results.push({
       ...item,

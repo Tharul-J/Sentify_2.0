@@ -78,7 +78,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
         </button>
       </div>
 
-      <div className="absolute bottom-8 text-sentify-muted text-sm">
+      <div className="absolute bottom-4 text-sentify-muted text-sm">
         Powered by FinBERT & Gemini AI
       </div>
     </div>

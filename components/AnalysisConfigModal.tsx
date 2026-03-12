@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Clock, Brain, Sparkles } from 'lucide-react';
+import { X, Clock, Brain, Sparkles, Layers } from 'lucide-react';
 import { StockTicker } from '../types';
 
 interface AnalysisConfigModalProps {
@@ -10,6 +10,7 @@ interface AnalysisConfigModalProps {
 
 export interface AnalysisConfig {
   timeRange: string;
+  depth: string;
   useGemini: boolean;
   useFinBERT: boolean;
 }
@@ -26,24 +27,31 @@ const TIME_RANGES = [
   { value: '5y', label: '5 Years' },
 ];
 
+const DEPTH_OPTIONS = [
+  { value: 'quick', label: 'Quick', articles: 20, description: 'Fast analysis, fewer articles' },
+  { value: 'standard', label: 'Standard', articles: 40, description: 'Balanced analysis (Recommended)' },
+  { value: 'deep', label: 'Deep', articles: 75, description: 'Comprehensive analysis, more articles' },
+];
+
 export const AnalysisConfigModal: React.FC<AnalysisConfigModalProps> = ({ ticker, onAnalyze, onCancel }) => {
   const [timeRange, setTimeRange] = useState('1w');
-  const [useGemini, setUseGemini] = useState(true);
-  const [useFinBERT, setUseFinBERT] = useState(false);
+  const [depth, setDepth] = useState('standard');
+  const [useGemini, setUseGemini] = useState(false);
+  const [useFinBERT, setUseFinBERT] = useState(true);
 
   const handleAnalyze = () => {
     if (!useGemini && !useFinBERT) {
       alert('Please select at least one analysis model');
       return;
     }
-    onAnalyze({ timeRange, useGemini, useFinBERT });
+    onAnalyze({ timeRange, depth, useGemini, useFinBERT });
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 pt-20">
-      <div className="bg-slate-900 rounded-2xl border border-slate-700 max-w-2xl w-full shadow-2xl animate-fade-in-up">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-900 rounded-2xl border border-slate-700 max-w-2xl w-full shadow-2xl animate-fade-in-up max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
+        <div className="flex items-center justify-between p-6 border-b border-slate-800 flex-shrink-0">
           <div>
             <h2 className="text-2xl font-bold text-white">Configure Analysis</h2>
             <p className="text-slate-400 text-sm mt-1">
@@ -58,8 +66,8 @@ export const AnalysisConfigModal: React.FC<AnalysisConfigModalProps> = ({ ticker
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
+        {/* Content - Scrollable */}
+        <div className="p-6 space-y-6 overflow-y-auto flex-1">
           {/* Time Range Selection */}
           <div>
             <div className="flex items-center gap-2 mb-3">
@@ -71,13 +79,44 @@ export const AnalysisConfigModal: React.FC<AnalysisConfigModalProps> = ({ ticker
                 <button
                   key={range.value}
                   onClick={() => setTimeRange(range.value)}
-                  className={`px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     timeRange === range.value
                       ? 'bg-sentify-primary text-white shadow-lg shadow-sentify-primary/30'
                       : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
                   }`}
                 >
                   {range.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Analysis Depth Selection */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Layers className="h-5 w-5 text-sentify-primary" />
+              <label className="text-sm font-semibold text-white">Analysis Depth</label>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {DEPTH_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setDepth(option.value)}
+                  className={`p-4 rounded-lg text-sm transition-all text-left ${
+                    depth === option.value
+                      ? 'bg-gradient-to-br from-sentify-primary/20 to-sentify-primary/5 border-2 border-sentify-primary shadow-lg shadow-sentify-primary/20'
+                      : 'bg-slate-800 border border-slate-700 hover:border-slate-600'
+                  }`}
+                >
+                  <div className={`font-bold ${depth === option.value ? 'text-sentify-primary' : 'text-white'}`}>
+                    {option.label}
+                  </div>
+                  <div className={`text-xs mt-1 ${depth === option.value ? 'text-sentify-primary/80' : 'text-slate-400'}`}>
+                    ~{option.articles} articles
+                  </div>
+                  <div className="text-xs text-slate-500 mt-2">
+                    {option.description}
+                  </div>
                 </button>
               ))}
             </div>
@@ -135,8 +174,8 @@ export const AnalysisConfigModal: React.FC<AnalysisConfigModalProps> = ({ ticker
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-slate-800">
+        {/* Footer - Fixed at bottom */}
+        <div className="flex items-center justify-between p-6 border-t border-slate-800 flex-shrink-0 bg-slate-900">
           <button
             onClick={onCancel}
             className="px-5 py-2.5 text-sm font-medium text-slate-300 hover:text-white transition-colors"

@@ -11,7 +11,19 @@ import { NewsItem, StockTicker } from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
+// Simple cache for search results to improve performance
+const searchCache = new Map<string, { data: StockTicker[], timestamp: number }>();
+const CACHE_TTL = 300000; // 5 minutes cache
+
 export const searchTickers = async (query: string): Promise<StockTicker[]> => {
+  const cacheKey = query.toLowerCase().trim();
+  
+  // Check cache first
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  
   try {
     const url = `${API_BASE_URL}/api/search${query ? `?q=${encodeURIComponent(query)}` : ''}`;
     const response = await fetch(url);
@@ -21,6 +33,10 @@ export const searchTickers = async (query: string): Promise<StockTicker[]> => {
     }
     
     const data = await response.json();
+    
+    // Store in cache
+    searchCache.set(cacheKey, { data, timestamp: Date.now() });
+    
     return data;
   } catch (error) {
     console.error('[MarketService] Error fetching tickers:', error);
@@ -29,11 +45,11 @@ export const searchTickers = async (query: string): Promise<StockTicker[]> => {
   }
 };
 
-export const fetchCompanyNews = async (symbol: string, timeFilter: string): Promise<NewsItem[]> => {
+export const fetchCompanyNews = async (symbol: string, timeFilter: string, depth: string = 'standard'): Promise<NewsItem[]> => {
   try {
-    console.log(`[MarketService] Fetching news for ${symbol} range=${timeFilter}...`);
+    console.log(`[MarketService] Fetching news for ${symbol} range=${timeFilter} depth=${depth}...`);
     
-    const url = `${API_BASE_URL}/api/news?symbol=${encodeURIComponent(symbol)}&range=${timeFilter}`;
+    const url = `${API_BASE_URL}/api/news?symbol=${encodeURIComponent(symbol)}&range=${timeFilter}&depth=${depth}`;
     const response = await fetch(url);
     
     if (!response.ok) {

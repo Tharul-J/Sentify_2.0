@@ -9,8 +9,10 @@ Real-time financial news sentiment analysis using dual AI models (Gemini & FinBE
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-19.2.3-61DAFB.svg)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue.svg)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-6.2-646CFF.svg)](https://vitejs.dev/)
 [![Flask](https://img.shields.io/badge/Flask-3.0.0-green.svg)](https://flask.palletsprojects.com/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.6+-EE4C2C.svg)](https://pytorch.org/)
 
 ---
 
@@ -27,9 +29,10 @@ Real-time financial news sentiment analysis using dual AI models (Gemini & FinBE
 
 ## 🛠️ Tech Stack
 
-**Frontend:** React, TypeScript, Vite, Tailwind CSS, Recharts  
-**Backend:** Python, Flask, Transformers (FinBERT), PyTorch  
-**APIs:** Gemini AI, Finnhub, Alpha Vantage, NewsAPI, NewsData.io, Polygon.io
+**Frontend:** React 19.2, TypeScript 5.8, Vite 6.2, Tailwind CSS 3.4, Recharts 3.6  
+**Backend:** Python 3.8+, Flask 3.0, Transformers (FinBERT), PyTorch 2.6+  
+**APIs:** Gemini AI, Finnhub, Alpha Vantage, NewsAPI, NewsData.io, Polygon.io  
+**Tools:** Concurrently, Lucide Icons, jsPDF
 
 ---
 

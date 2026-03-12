@@ -178,21 +178,23 @@ def get_news():
     Query params: 
       - symbol (stock ticker symbol)
       - range (time filter: '1d', '1w', '1m', etc.)
+      - depth (analysis depth: 'quick', 'standard', 'deep')
     Returns: Array of NewsItem objects
     """
     symbol = request.args.get('symbol', '').strip()
     time_filter = request.args.get('range', '1w')
+    depth = request.args.get('depth', 'standard')
     
     if not symbol:
         return jsonify({"error": "Symbol parameter is required"}), 400
     
     # Check cache first
-    cache_key = f"{symbol}_{time_filter}"
+    cache_key = f"{symbol}_{time_filter}_{depth}"
     current_time = time.time()
     if cache_key in news_cache:
         cached_data, cache_time = news_cache[cache_key]
         if current_time - cache_time < CACHE_DURATION:
-            print(f"Using cached news for {symbol}")
+            print(f"Using cached news for {symbol} (depth={depth})")
             return jsonify(cached_data), 200
     
     # Try multiple news APIs in order
@@ -200,34 +202,34 @@ def get_news():
     
     # 1. Try Finnhub API first (we have 2 keys)
     if FINNHUB_API_KEY or FINNHUB_API_KEY_2:
-        news_items = fetch_finnhub_news(symbol, time_filter)
+        news_items = fetch_finnhub_news(symbol, time_filter, depth)
         if news_items:
             news_cache[cache_key] = (news_items, current_time)
             return jsonify(news_items), 200
     
     # 2. Try Alpha Vantage News API
-    news_items = fetch_alphavantage_news(symbol, time_filter)
+    news_items = fetch_alphavantage_news(symbol, time_filter, depth)
     if news_items:
         news_cache[cache_key] = (news_items, current_time)
         return jsonify(news_items), 200
     
     # 3. Try NewsData.io
     if NEWSDATA_API_KEY:
-        news_items = fetch_newsdata_news(symbol, time_filter)
+        news_items = fetch_newsdata_news(symbol, time_filter, depth)
         if news_items:
             news_cache[cache_key] = (news_items, current_time)
             return jsonify(news_items), 200
     
     # 4. Try NewsAPI
     if newsapi:
-        news_items = fetch_newsapi_news(symbol, time_filter)
+        news_items = fetch_newsapi_news(symbol, time_filter, depth)
         if news_items:
             news_cache[cache_key] = (news_items, current_time)
             return jsonify(news_items), 200
     
     # 5. Try Polygon.io
     if POLYGON_API_KEY:
-        news_items = fetch_polygon_news(symbol, time_filter)
+        news_items = fetch_polygon_news(symbol, time_filter, depth)
         if news_items:
             news_cache[cache_key] = (news_items, current_time)
             return jsonify(news_items), 200
@@ -526,6 +528,16 @@ def parse_time_filter(time_filter):
     return filters.get(time_filter, 7)  # Default to 1 week
 
 
+def get_article_limit(depth):
+    """Get article limit based on analysis depth selection"""
+    limits = {
+        'quick': 20,      # Quick: 20 articles - fast analysis
+        'standard': 40,   # Standard: 40 articles - balanced (recommended)
+        'deep': 75        # Deep: 75 articles - comprehensive analysis
+    }
+    return limits.get(depth, 40)  # Default to standard
+
+
 def analyze_sentiment_finbert(text):
     """
     Analyze sentiment using FinBERT model
@@ -564,7 +576,7 @@ def analyze_sentiment_finbert(text):
         return None
 
 
-def fetch_alphavantage_news(symbol, time_filter):
+def fetch_alphavantage_news(symbol, time_filter, depth='standard'):
     """Fetch news from Alpha Vantage News Sentiment API with relevance filtering"""
     if not ALPHA_VANTAGE_KEY:
         return None
@@ -572,14 +584,15 @@ def fetch_alphavantage_news(symbol, time_filter):
     try:
         # Get company name for better filtering
         company_name = get_company_name(symbol)
+        article_limit = get_article_limit(depth)
         
-        url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&apikey={ALPHA_VANTAGE_KEY}&limit=50"
+        url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&apikey={ALPHA_VANTAGE_KEY}&limit={article_limit}"
         response = requests.get(url, timeout=10)
         data = response.json()
         
         if 'feed' in data and data['feed']:
             news_items = []
-            for idx, article in enumerate(data['feed'][:50]):
+            for idx, article in enumerate(data['feed'][:article_limit]):
                 article_data = {
                     'id': f"{symbol}_av_{idx}",
                     'title': article.get('title', ''),
@@ -600,12 +613,13 @@ def fetch_alphavantage_news(symbol, time_filter):
     return None
 
 
-def fetch_finnhub_news(symbol, time_filter):
+def fetch_finnhub_news(symbol, time_filter, depth='standard'):
     """Fetch news from Finnhub API with fallback to second key and relevance filtering"""
     keys = [FINNHUB_API_KEY, FINNHUB_API_KEY_2]
     
     # Get company name for better filtering
     company_name = get_company_name(symbol)
+    article_limit = get_article_limit(depth)
     
     for idx, key in enumerate(keys):
         if not key:
@@ -627,8 +641,8 @@ def fetch_finnhub_news(symbol, time_filter):
             
             if isinstance(data, list) and data:
                 news_items = []
-                total_fetched = len(data[:50])
-                for article_idx, article in enumerate(data[:50]):
+                total_fetched = len(data[:article_limit])
+                for article_idx, article in enumerate(data[:article_limit]):
                     article_data = {
                         'id': f"{symbol}_fh_{article_idx}",
                         'title': article.get('headline', ''),
@@ -651,7 +665,7 @@ def fetch_finnhub_news(symbol, time_filter):
     return None
 
 
-def fetch_newsapi_news(symbol, time_filter):
+def fetch_newsapi_news(symbol, time_filter, depth='standard'):
     """Fetch news from NewsAPI with relevance filtering"""
     if not newsapi:
         return None
@@ -659,6 +673,7 @@ def fetch_newsapi_news(symbol, time_filter):
     try:
         days_back = min(parse_time_filter(time_filter), 30)
         from_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+        article_limit = min(get_article_limit(depth), 100)  # NewsAPI max is 100
         
         # Get company name
         company_name = get_company_name(symbol)
@@ -668,7 +683,7 @@ def fetch_newsapi_news(symbol, time_filter):
             from_param=from_date,
             language='en',
             sort_by='publishedAt',
-            page_size=50
+            page_size=article_limit
         )
         
         news_items = []
@@ -695,13 +710,14 @@ def fetch_newsapi_news(symbol, time_filter):
     return None
 
 
-def fetch_polygon_news(symbol, time_filter):
+def fetch_polygon_news(symbol, time_filter, depth='standard'):
     """Fetch news from Polygon.io API"""
     if not POLYGON_API_KEY:
         return None
     
     try:
-        url = f"https://api.polygon.io/v2/reference/news?ticker={symbol}&limit=50&apiKey={POLYGON_API_KEY}"
+        article_limit = get_article_limit(depth)
+        url = f"https://api.polygon.io/v2/reference/news?ticker={symbol}&limit={article_limit}&apiKey={POLYGON_API_KEY}"
         response = requests.get(url, timeout=10)
         data = response.json()
         
@@ -723,7 +739,7 @@ def fetch_polygon_news(symbol, time_filter):
     return None
 
 
-def fetch_newsdata_news(symbol, time_filter):
+def fetch_newsdata_news(symbol, time_filter, depth='standard'):
     """Fetch news from NewsData.io API with relevance filtering"""
     if not NEWSDATA_API_KEY:
         return None
@@ -731,6 +747,7 @@ def fetch_newsdata_news(symbol, time_filter):
     try:
         # Get company name for better filtering
         company_name = get_company_name(symbol)
+        article_limit = get_article_limit(depth)
         
         url = f"https://newsdata.io/api/1/news?apikey={NEWSDATA_API_KEY}&q={symbol}&language=en"
         response = requests.get(url, timeout=10)
@@ -738,8 +755,8 @@ def fetch_newsdata_news(symbol, time_filter):
         
         if 'results' in data and data['results']:
             news_items = []
-            total_fetched = len(data['results'][:50])
-            for idx, article in enumerate(data['results'][:50]):
+            total_fetched = len(data['results'][:article_limit])
+            for idx, article in enumerate(data['results'][:article_limit]):
                 article_data = {
                     'id': f"{symbol}_nd_{idx}",
                     'title': article.get('title', ''),
