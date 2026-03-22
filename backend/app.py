@@ -196,44 +196,56 @@ def get_news():
         if current_time - cache_time < CACHE_DURATION:
             print(f"Using cached news for {symbol} (depth={depth})")
             return jsonify(cached_data), 200
-    
-    # Try multiple news APIs in order
-    news_items = None
-    
-    # 1. Try Finnhub API first (we have 2 keys)
-    if FINNHUB_API_KEY or FINNHUB_API_KEY_2:
-        news_items = fetch_finnhub_news(symbol, time_filter, depth)
-        if news_items:
-            news_cache[cache_key] = (news_items, current_time)
-            return jsonify(news_items), 200
-    
-    # 2. Try Alpha Vantage News API
-    news_items = fetch_alphavantage_news(symbol, time_filter, depth)
-    if news_items:
-        news_cache[cache_key] = (news_items, current_time)
-        return jsonify(news_items), 200
-    
-    # 3. Try NewsData.io
-    if NEWSDATA_API_KEY:
-        news_items = fetch_newsdata_news(symbol, time_filter, depth)
-        if news_items:
-            news_cache[cache_key] = (news_items, current_time)
-            return jsonify(news_items), 200
-    
-    # 4. Try NewsAPI
-    if newsapi:
-        news_items = fetch_newsapi_news(symbol, time_filter, depth)
-        if news_items:
-            news_cache[cache_key] = (news_items, current_time)
-            return jsonify(news_items), 200
-    
-    # 5. Try Polygon.io
-    if POLYGON_API_KEY:
-        news_items = fetch_polygon_news(symbol, time_filter, depth)
-        if news_items:
-            news_cache[cache_key] = (news_items, current_time)
-            return jsonify(news_items), 200
-    
+
+    # Aggregate across providers until we hit the depth limit
+    article_limit = get_article_limit(depth)
+    aggregated = []
+    seen_urls = set()
+    seen_titles = set()
+
+    def add_articles(items):
+        added = 0
+        for a in items:
+            url = a.get('url') or ''
+            title = a.get('title') or ''
+            # simple dedupe on url/title
+            key_url = url.lower()
+            key_title = title.lower()
+            if key_url in seen_urls or key_title in seen_titles:
+                continue
+            aggregated.append(a)
+            if key_url:
+                seen_urls.add(key_url)
+            if key_title:
+                seen_titles.add(key_title)
+            added += 1
+            if len(aggregated) >= article_limit:
+                break
+        return added
+
+    providers = [
+        ('finnhub', lambda: fetch_finnhub_news(symbol, time_filter, depth)),
+        ('alpha_vantage', lambda: fetch_alphavantage_news(symbol, time_filter, depth)),
+        ('newsdata', lambda: fetch_newsdata_news(symbol, time_filter, depth) if NEWSDATA_API_KEY else None),
+        ('newsapi', lambda: fetch_newsapi_news(symbol, time_filter, depth) if newsapi else None),
+        ('polygon', lambda: fetch_polygon_news(symbol, time_filter, depth) if POLYGON_API_KEY else None),
+    ]
+
+    for name, fn in providers:
+        if len(aggregated) >= article_limit:
+            break
+        try:
+            items = fn()
+            if items:
+                added = add_articles(items)
+                print(f"[OK] {name}: added {added}, total {len(aggregated)}/{article_limit}")
+        except Exception as e:
+            print(f"[WARNING] {name} provider error: {e}")
+
+    if aggregated:
+        news_cache[cache_key] = (aggregated, current_time)
+        return jsonify(aggregated), 200
+
     # Fallback to mock data
     print(f"All news APIs failed for {symbol}, using mock data")
     mock_news = get_mock_news(symbol)
