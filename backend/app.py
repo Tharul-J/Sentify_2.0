@@ -69,7 +69,7 @@ print(f"[OK] Active news sources: {', '.join(api_status) if api_status else 'Non
 # Cache for ticker data to avoid rate limiting
 ticker_cache = {}
 news_cache = {}
-CACHE_DURATION = 300  # Cache for 5 minutes for real-time feel
+CACHE_DURATION = 3600  # Cache for 60 minutes for real-time feel
 
 
 def is_relevant_news(article, symbol, company_name=None):
